@@ -24,6 +24,7 @@
 import urllib2
 from decimal import Decimal
 from xml.etree import ElementTree
+import requests
 
 from namecheap.api import NCDomain, NCDomainDNS, NCDomainNS, NCDomainTransfer
 from namecheap.api import NCSSL, NCUser, NCUserAddress
@@ -124,10 +125,38 @@ class NCClient(object):
 
         return doc
 
-    def _call(self, command, args={}):
-        url = self._make_url(command, args)
-        response = urllib2.urlopen(url)
-        doc = self._process_response(response.read())
-
+    def _call(self, command, args={}, method='GET'):
+        #url = self._make_url(command, args)
+        #response = urllib2.urlopen(url)
+        self.command = command
+        response = self.request(self.environment, params=args)
+        #doc = self._process_response(response.read())
+        doc = self._process_response(response)
         return doc
 
+    def request(self, target, method='GET', params={}):
+        assert method in ['GET', 'POST'], \
+            "Only 'GET' 'POST' are allowed."
+        headers = {
+            #'User-Agent': 'dop/client'
+        }
+
+        params['ApiUser'] = self.apiuser
+        params['ApiKey'] = self.apikey
+        params['UserName'] = self.username
+        params['ClientIP'] = self.client_ip
+        params['command'] = self.command
+                  
+        if method == 'POST':
+            #headers['Content-Type'] = "application/json"
+            #url = self.get_url(target)
+            url = target
+            response = requests.post(url, headers=headers, params=params)
+        else:
+            #url = self.get_url(target)
+            url = target
+            response = requests.get(url, headers=headers, params=params)
+
+        #print response.content
+        return response.content
+        

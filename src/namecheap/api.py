@@ -111,8 +111,8 @@ class NCAPI(object):
     def _bool(self, value):
         return True if value == 'true' else False
 
-    def _call(self, command, args={}):
-        doc = self.client._call('namecheap.{0}'.format(command), args)
+    def _call(self, command, args={}, method="GET"):
+        doc = self.client._call('namecheap.{0}'.format(command), args, method)
 
         if doc['Errors']:
             system = doc['Errors']['Number'][0:2]
@@ -356,30 +356,167 @@ class NCDomainTransfer(NCAPI):
         pass
 
 class NCSSL(NCAPI):
-    def create(self, years, quantity, ssl_type, coupon=None):
-        pass
+    def create(self, years, ssl_type, coupon=None):
+        args = dict()
+        if years:
+            args['Years'] = years
+        if ssl_type:
+            args['Type'] = ssl_type
+        if coupon:
+            args['PromotionCode'] = coupon
+        
+        doc = self._call('ssl.create', args)
+        
+        """
+        <SSLCreateResult IsSuccess="true" OrderId="3186" TransactionId="4211" ChargedAmount="30.2000">
+          <SSLCertificate CertificateID="500393" Created="06/26/2010" Expires="" 
+                          SSLType="SSLCertificate1" Years="2" Status="NewPurchase"/>
+          </SSLCreateResult>
+        """
+        ret = dict()
+        ssl_certs = doc['CommandResponse'] \
+            .findall(self.client._name('SSLCreateResult'))[0] \
+            .findall(self.client._name('SSLCertificate'))
+
+        ret['SSLCertificates'] = []
+        for ssl in ssl_certs:
+            ret['SSLCertificates'].append({
+                'CertificateID': int(ssl.attrib['CertificateID']),
+                'Created': ssl.attrib['Created'],
+                #'Expires': ssl.attrib['Expires'],
+                'SSLType': ssl.attrib['SSLType'],
+                'Years': ssl.attrib['Years'],
+                'Status': ssl.attrib['Status'],                
+            })
+
+        return ret
 
     def activate(self, certificate_id, approver_email, csr, web_server_type,
                  contact_data):
-        pass
+        args = dict()
+        args['CertificateID'] = certificate_id
+        args['ApproverEmail'] = approver_email
+        args['csr'] = csr
+        args['WebServerType'] = web_server_type
+        args['AdminJobTitle'] = contact_data['AdminJobTitle']
+        args['AdminFirstName'] = contact_data['AdminFirstName']
+        args['AdminLastName'] = contact_data['AdminLastName']
+        args['AdminAddress1'] = contact_data['AdminAddress1']
+        args['AdminCity'] = contact_data['AdminCity']
+        args['AdminStateProvince'] = contact_data['AdminStateProvince']
+        args['AdminPostalCode'] = contact_data['AdminPostalCode']
+        args['AdminCountry'] = contact_data['AdminCountry']
+        args['AdminPhone'] = contact_data['AdminPhone']
+        args['AdminEmailAddress'] = contact_data['AdminEmailAddress']
+        args['AdminOrganizationName'] = contact_data['AdminOrganizationName'] 
+        doc = self._call('ssl.activate', args=args, method='POST')
+        return doc
 
+    def reissue(self, certificate_id, approver_email, csr, web_server_type,
+                 contact_data):
+        args = dict()
+        args['CertificateID'] = certificate_id
+        args['ApproverEmail'] = approver_email
+        args['csr'] = csr
+        args['WebServerType'] = web_server_type
+        args['AdminJobTitle'] = contact_data['AdminJobTitle']
+        args['AdminFirstName'] = contact_data['AdminFirstName']
+        args['AdminLastName'] = contact_data['AdminLastName']
+        args['AdminAddress1'] = contact_data['AdminAddress1']
+        args['AdminCity'] = contact_data['AdminCity']
+        args['AdminStateProvince'] = contact_data['AdminStateProvince']
+        args['AdminPostalCode'] = contact_data['AdminPostalCode']
+        args['AdminCountry'] = contact_data['AdminCountry']
+        args['AdminPhone'] = contact_data['AdminPhone']
+        args['AdminEmailAddress'] = contact_data['AdminEmailAddress']
+        args['AdminOrganizationName'] = contact_data['AdminOrganizationName'] 
+        doc = self._call('ssl.reissue', args=args, method='POST')
+        return doc
+        
     def get_info(self, certificate_id):
         pass
 
     def parse_csr(self, csr, certificate_type=None):
-        pass
+        args = dict()
+        if csr:
+            args['csr'] = csr
+        if certificate_type:
+            args['CertificateType'] = CertificateType
+        
+        doc = self._call('ssl.parseCSR', args=args, method='POST')
+        
+        return doc
 
     def get_approver_email_list(self, domain, certificate_type):
-        pass
+        args = dict()
+        args['DomainName'] = domain
+        args['CertificateType'] = certificate_type
+        
+        doc = self._call('ssl.getApproverEmailList', args)
+        
+        return doc
+        
     def get_list(self, list_type=None, search_term=None, sort_by=None,
                  page=None, page_size=None):
-        pass
+        args = dict()
+        if list_type:
+            args['ListType'] = list_type
+        if search_term:
+            args['SearchTerm'] = search_term
+        if page:
+            args['Page'] = page
+        if page_size:
+            args['PageSize'] = page_size
+        if sort_by:
+            args['SortBy'] = sort_by
 
-    def resend_approver_email(self, cretificate_id):
-        pass
+        doc = self._call('ssl.getList', args)
+
+        ret = dict()
+        ssl_certs = doc['CommandResponse'] \
+            .findall(self.client._name('SSLListResult'))[0] \
+            .findall(self.client._name('SSL'))
+
+        ret['SSLs'] = []
+        for ssl in ssl_certs:
+            ret['SSLs'].append({
+                'CertificateID': int(ssl.attrib['CertificateID']),
+                'HostName': ssl.attrib['HostName'],
+                'SSLType': ssl.attrib['SSLType'],
+                'PurchaseDate': ssl.attrib['PurchaseDate'],
+                'ExpireDate': ssl.attrib['ExpireDate'],
+                'ActivationExpireDate': ssl.attrib['ActivationExpireDate'],
+                'IsExpiredYN': self._bool(ssl.attrib['IsExpiredYN']),
+                'Status': ssl.attrib['Status'],                
+            })
+        paging = doc['CommandResponse'] \
+            .findall(self.client._name('Paging'))[0]
+        ret['Paging'] = {
+            'TotalItems': int(paging.findall \
+                          (self.client._name('TotalItems'))[0].text),
+            'CurrentPage': int(paging.findall \
+                           (self.client._name('CurrentPage'))[0].text),
+            'PageSize': int(paging.findall \
+                        (self.client._name('PageSize'))[0].text),
+        }
+
+        return ret
+                
+    def resend_approver_email(self, certificate_id):
+        args = dict()
+        args['CertificateID'] = certificate_id
+        
+        doc = self._call('ssl.resendApproverEmail', args)
+        
+        return doc    
 
     def resend_fullfillment_email(self, certificate_id):
-        pass
+        args = dict()
+        args['CertificateID'] = certificate_id
+        
+        doc = self._call('ssl.resendfulfillmentemail', args)
+        
+        return doc    
 
 class NCUser(NCAPI):
     def create(self, username, password, email, acept_terms, accept_news,
